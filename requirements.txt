@@ -1,0 +1,5 @@
+uvicorn
+httpx
+starlette
+sse-starlette
+a2a-sdk[http-server]
