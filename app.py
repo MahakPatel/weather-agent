@@ -15,43 +15,45 @@ from a2a.utils import new_agent_text_message
 # ----------------------------
 class WeatherAgent:
     async def get_weather(self, city: str):
-        geo_url = "https://geocoding-api.open-meteo.com/v1/search"
-        weather_url = "https://api.open-meteo.com/v1/forecast"
 
-        async with httpx.AsyncClient(timeout=10) as client:
-            # Get city coordinates
-            geo = await client.get(geo_url, params={"name": city, "count": 1})
+        try:
+            geo_url = "https://geocoding-api.open-meteo.com/v1/search"
+
+            async with httpx.AsyncClient(timeout=10) as client:
+                geo = await client.get(geo_url, params={"name": city, "count": 1})
+
             geo_data = geo.json()
 
             if "results" not in geo_data or len(geo_data["results"]) == 0:
                 return f"City '{city}' not found."
 
-            lat = geo_data["results"][0].get("latitude")
-            lon = geo_data["results"][0].get("longitude")
+            lat = geo_data["results"][0]["latitude"]
+            lon = geo_data["results"][0]["longitude"]
 
-            if lat is None or lon is None:
-                return f"Coordinates not found for '{city}'"
+            weather_url = "https://api.open-meteo.com/v1/forecast"
 
-            # Get weather data
-            weather = await client.get(
-                weather_url,
-                params={
-                    "latitude": lat,
-                    "longitude": lon,
-                    "current_weather": True
-                }
-            )
+            async with httpx.AsyncClient(timeout=10) as client:
+                weather = await client.get(
+                    weather_url,
+                    params={
+                        "latitude": lat,
+                        "longitude": lon,
+                        "current_weather": "true"
+                    }
+                )
+
             weather_data = weather.json()
 
-        # Check if current_weather exists
-        current_weather = weather_data.get("current_weather")
-        if not current_weather:
-            return f"Weather data unavailable for '{city}'"
+            if "current_weather" not in weather_data:
+                return f"Weather data unavailable for '{city}'."
 
-        temp = current_weather.get("temperature", "N/A")
-        wind = current_weather.get("windspeed", "N/A")
+            temp = weather_data["current_weather"]["temperature"]
+            wind = weather_data["current_weather"]["windspeed"]
 
-        return f"Weather in {city}: {temp}°C, Wind {wind} km/h"
+            return f"Weather in {city}: {temp}°C, Wind {wind} km/h"
+
+        except Exception as e:
+            return f"Weather service error: {str(e)}"
 
 
 # ----------------------------
