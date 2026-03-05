@@ -1,4 +1,4 @@
-import uvicorn
+import os
 import httpx
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -61,69 +61,72 @@ class WeatherAgentExecutor(AgentExecutor):
         raise Exception("cancel not supported")
 
 # ----------------------------
-# Main server setup
+# Agent Skill & Card
 # ----------------------------
-if __name__ == "__main__":
+skill = AgentSkill(
+    id="weather",
+    name="Weather Agent",
+    description="Returns weather information for a city",
+    tags=["weather"],
+    examples=["Dallas weather", "weather in New York"],
+)
 
-    # Define agent skill
-    skill = AgentSkill(
-        id="weather",
-        name="Weather Agent",
-        description="Returns weather information for a city",
-        tags=["weather"],
-        examples=["Dallas weather", "weather in New York"],
-    )
+agent_card = AgentCard(
+    name="Weather Agent",
+    description="Free weather agent using Open-Meteo",
+    url="http://localhost:9999/",  # root URL
+    version="1.0.0",
+    default_input_modes=["text"],
+    default_output_modes=["text"],
+    capabilities=AgentCapabilities(streaming=True),
+    skills=[skill],
+)
 
-    # Public agent card
-    agent_card = AgentCard(
-        name="Weather Agent",
-        description="Free weather agent using Open-Meteo",
-        url="http://localhost:9999/",  # root URL
-        version="1.0.0",
-        default_input_modes=["text"],
-        default_output_modes=["text"],
-        capabilities=AgentCapabilities(streaming=True),
-        skills=[skill],
-    )
+# ----------------------------
+# Request Handler
+# ----------------------------
+request_handler = DefaultRequestHandler(
+    agent_executor=WeatherAgentExecutor(),
+    task_store=InMemoryTaskStore(),
+)
 
-    # Request handler
-    request_handler = DefaultRequestHandler(
-        agent_executor=WeatherAgentExecutor(),
-        task_store=InMemoryTaskStore(),
-    )
+# ----------------------------
+# Build A2AStarletteApplication
+# ----------------------------
+server = A2AStarletteApplication(
+    agent_card=agent_card,
+    http_handler=request_handler,
+)
 
-    # Build A2AStarletteApplication
-    server = A2AStarletteApplication(
-        agent_card=agent_card,
-        http_handler=request_handler,
-    )
+# ----------------------------
+# Top-level ASGI app (Render expects this)
+# ----------------------------
+app = server.build()
 
-    # Get the Starlette ASGI app
-    app = server.build()
+# ----------------------------
+# /agent-card endpoint
+# ----------------------------
+async def get_agent_card(request: Request):
+    return JSONResponse(agent_card.dict())
 
-    # ----------------------------
-    # REST endpoint: /agent-card
-    # ----------------------------
-    async def get_agent_card(request: Request):
-        return JSONResponse(agent_card.dict())
+app.routes.append(Route("/agent-card", get_agent_card))
 
-    app.routes.append(Route("/agent-card", get_agent_card))
+# ----------------------------
+# /get-weather?city=CityName endpoint
+# ----------------------------
+async def get_weather(request: Request):
+    city = request.query_params.get("city")
+    if not city:
+        return JSONResponse({"error": "Please provide a city"}, status_code=400)
 
-    # ----------------------------
-    # REST endpoint: /get-weather?city=CityName
-    # ----------------------------
-    async def get_weather(request: Request):
-        city = request.query_params.get("city")
-        if not city:
-            return JSONResponse({"error": "Please provide a city"}, status_code=400)
+    agent = WeatherAgent()
+    weather_info = await agent.get_weather(city)
+    return JSONResponse({"weather": weather_info})
 
-        agent = WeatherAgent()
-        weather_info = await agent.get_weather(city)
-        return JSONResponse({"weather": weather_info})
+app.routes.append(Route("/get-weather", get_weather))
 
-    app.routes.append(Route("/get-weather", get_weather))
-
-    # ----------------------------
-    # Run the server
-    # ----------------------------
-    uvicorn.run(app, host="0.0.0.0", port=9999)
+# ----------------------------
+# Note: Remove uvicorn.run() from file
+# Render will start Uvicorn with:
+# uvicorn __main__:app --host 0.0.0.0 --port $PORT
+# ----------------------------
