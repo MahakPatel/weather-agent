@@ -14,13 +14,17 @@ from a2a.utils import new_agent_text_message
 # Weather Agent Logic
 # ----------------------------
 class WeatherAgent:
+
     async def get_weather(self, city: str):
 
         try:
             geo_url = "https://geocoding-api.open-meteo.com/v1/search"
 
             async with httpx.AsyncClient(timeout=10) as client:
-                geo = await client.get(geo_url, params={"name": city, "count": 1})
+                geo = await client.get(
+                    geo_url,
+                    params={"name": city, "count": 1}
+                )
 
             geo_data = geo.json()
 
@@ -38,7 +42,7 @@ class WeatherAgent:
                     params={
                         "latitude": lat,
                         "longitude": lon,
-                        "current_weather": "true"
+                        "current_weather": True
                     }
                 )
 
@@ -53,20 +57,27 @@ class WeatherAgent:
             return f"Weather in {city}: {temp}°C, Wind {wind} km/h"
 
         except Exception as e:
-            return f"Weather service error: {str(e)}"
+            print("Weather API error:", str(e))
+            return f"Weather service temporarily unavailable for '{city}'."
 
 
 # ----------------------------
 # Agent Executor
 # ----------------------------
 class WeatherAgentExecutor(AgentExecutor):
+
     def __init__(self):
         self.agent = WeatherAgent()
 
     async def execute(self, context: RequestContext, event_queue: EventQueue):
+
         user_input = context.get_user_input()
+
         result = await self.agent.get_weather(user_input)
-        await event_queue.enqueue_event(new_agent_text_message(result))
+
+        await event_queue.enqueue_event(
+            new_agent_text_message(result)
+        )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue):
         raise Exception("Cancel not supported")
@@ -80,7 +91,7 @@ skill = AgentSkill(
     name="Weather Agent",
     description="Returns weather for a city",
     tags=["weather"],
-    examples=["Dallas weather", "weather in New York"]
+    examples=["Dallas", "Pomona", "New York"]
 )
 
 
@@ -90,7 +101,7 @@ skill = AgentSkill(
 agent_card = AgentCard(
     name="Weather Agent",
     description="Free weather agent using Open-Meteo",
-    url="https://your-render-url.onrender.com",
+    url="https://weather-agent-k31a.onrender.com",
     version="1.0.0",
     default_input_modes=["text"],
     default_output_modes=["text"],
@@ -123,12 +134,16 @@ app = server.build()
 # Weather Endpoint
 # ----------------------------
 async def get_weather(request):
+
     city = request.query_params.get("city")
+
     if not city:
         return JSONResponse({"error": "city query param required"})
 
     agent = WeatherAgent()
+
     result = await agent.get_weather(city)
+
     return JSONResponse({"result": result})
 
 
