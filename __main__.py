@@ -1,4 +1,3 @@
-import os
 import httpx
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -74,7 +73,7 @@ skill = AgentSkill(
 agent_card = AgentCard(
     name="Weather Agent",
     description="Free weather agent using Open-Meteo",
-    url="http://localhost:9999/",  # root URL
+    url="http://localhost:9999/",
     version="1.0.0",
     default_input_modes=["text"],
     default_output_modes=["text"],
@@ -99,7 +98,7 @@ server = A2AStarletteApplication(
 )
 
 # ----------------------------
-# Top-level ASGI app (Render expects this)
+# Top-level ASGI app (Render requires this)
 # ----------------------------
 app = server.build()
 
@@ -126,7 +125,7 @@ async def get_weather(request: Request):
 app.routes.append(Route("/get-weather", get_weather))
 
 # ----------------------------
-# Note: Remove uvicorn.run() from file
+# NOTE: Remove uvicorn.run() entirely
 # Render will start Uvicorn with:
 # uvicorn __main__:app --host 0.0.0.0 --port $PORT
 # ----------------------------
