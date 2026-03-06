@@ -2,3 +2,4 @@ a2a-sdk[http-server]
 httpx
 uvicorn
 starlette
+requests

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Weather Agent (A2A)</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        #messages { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; }
+        #messages p { margin: 5px 0; }
+        #city { width: 200px; }
+        button { margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h2>Weather Agent (A2A message/stream)</h2>
+    <input type="text" id="city" placeholder="Enter city (e.g. Dallas)" />
+    <input type="password" id="token" placeholder="API token (optional)" style="width: 200px; margin-left: 10px;" />
+    <button onclick="startStreaming()">Get Weather</button>
+    <div id="messages"></div>
+
+    <script>
+        const A2A_URL = 'http://127.0.0.1:8000/';
+
+        function uuid() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function getResultText(result) {
+            if (!result) return null;
+            var t;
+            if (result.parts && result.parts[0]) {
+                t = result.parts[0].text ?? result.parts[0].root?.text;
+            } else if (result.artifact && result.artifact.parts && result.artifact.parts[0]) {
+                var p = result.artifact.parts[0];
+                t = p.text ?? (p.root && p.root.text);
+            } else {
+                return null;
+            }
+            return typeof t === 'string' ? t : null;
+        }
+        function appendMessage(text) {
+            if (typeof text !== 'string' || !text.trim()) return;
+            const p = document.createElement('p');
+            p.textContent = text;
+            document.getElementById('messages').appendChild(p);
+            const msgDiv = document.getElementById('messages');
+            msgDiv.scrollTop = msgDiv.scrollHeight;
+        }
+
+        async function startStreaming() {
+            const city = document.getElementById('city').value.trim();
+            if (!city) return alert('Please enter a city');
+
+            document.getElementById('messages').innerHTML = '';
+
+            const messageId = uuid();
+            const body = {
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'message/stream',
+                params: {
+                    message: {
+                        kind: 'message',
+                        messageId: messageId,
+                        role: 'user',
+                        parts: [{ kind: 'text', text: city }]
+                    }
+                }
+            };
+
+            const headers = { 'Content-Type': 'application/json' };
+            const token = document.getElementById('token').value.trim();
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+
+            try {
+                const res = await fetch(A2A_URL, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) {
+                    if (res.status === 401) appendMessage('Error: Unauthorized. Check your token.');
+                    else appendMessage('Error: ' + res.status + ' ' + res.statusText);
+                    return;
+                }
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const jsonStr = line.slice(6).trim();
+                            if (!jsonStr) continue;
+                            try {
+                                const data = JSON.parse(jsonStr);
+                                if (data.error) {
+                                    appendMessage('Error: ' + (data.error.message || JSON.stringify(data.error)));
+                                    continue;
+                                }
+                                const result = data.result;
+                                const text = getResultText(result);
+                                if (text) appendMessage(text);
+                            } catch (e) {
+                                console.error('Parse error', e, line);
+                            }
+                        }
+                    }
+                }
+                if (buffer.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(buffer.slice(6).trim());
+                        const text = getResultText(data.result);
+                        if (text) appendMessage(text);
+                    } catch (_) {}
+                }
+            } catch (err) {
+                console.error(err);
+                appendMessage('Connection error: ' + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
